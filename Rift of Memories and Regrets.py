@@ -2842,25 +2842,25 @@ class bullet_hell_game:
         # --- Freeze power-up spawn (independent of bullet patterns) ---
         # Only spawn if not currently active and limited number on screen
         if not self.freeze_active and len(self.freeze_powerups) < 1:
-            # Roughly ~ one every ~45s expected (1 in 900 per 50ms frame)
-            if random.randint(1, 900) == 1:
+            # Increased spawn rate for testing: ~every 5 seconds (1 in 100 per 50ms frame)
+            if random.randint(1, 100) == 1:
                 self.spawn_freeze_powerup()
         # --- Rewind power-up spawn ---
         if not self.rewind_active and len(self.rewind_powerups) < 1:
-            # Rarer than freeze (approx one every ~70s)
-            if random.randint(1, 1400) == 1 and len(self._bullet_history) > 40:
+            # Increased spawn rate for testing: ~every 7 seconds (1 in 140 per 50ms frame)
+            if random.randint(1, 140) == 1 and len(self._bullet_history) > 40:
                 self.spawn_rewind_powerup()
         
         # --- Shield power-up spawn (optimized) ---
         if not self.shield_active and len(self.shield_powerups) < 1:
-            # Spawn roughly every ~55s (1 in 1100 per 50ms frame)
-            if random.randint(1, 1100) == 1:
+            # Increased spawn rate for testing: ~every 6 seconds (1 in 120 per 50ms frame)
+            if random.randint(1, 120) == 1:
                 self.spawn_shield_powerup()
         
         # --- Slow-motion power-up spawn (optimized) ---
         if not self.slowmo_active and len(self.slowmo_powerups) < 1:
-            # Spawn roughly every ~65s (1 in 1300 per 50ms frame)
-            if random.randint(1, 1300) == 1:
+            # Increased spawn rate for testing: ~every 7 seconds (1 in 140 per 50ms frame)
+            if random.randint(1, 140) == 1:
                 self.spawn_slowmo_powerup()
 
         # Move existing freeze power-ups downward & check collection
