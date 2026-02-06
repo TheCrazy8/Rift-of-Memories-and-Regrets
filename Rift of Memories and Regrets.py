@@ -106,7 +106,8 @@ class bullet_hell_game:
             'pause': ['Escape'],
             'restart': ['r'],
             'practice': ['p'],
-            'debug': ['F3']
+            'debug': ['F3'],
+            'toggle_mouse': ['m']
         },
         'mouse_enabled': True,
         'controller_enabled': True,
@@ -197,6 +198,8 @@ class bullet_hell_game:
             self.root.bind(key, self.toggle_practice_mode)
         for key in self.settings['keybinds']['debug']:
             self.root.bind(f"<{key}>", self.toggle_debug_hud)
+        for key in self.settings['keybinds']['toggle_mouse']:
+            self.root.bind(key, self.toggle_mouse_mode)
         
         # Debug HUD state
         self.debug_hud_enabled = False
@@ -863,6 +866,7 @@ class bullet_hell_game:
         except Exception:
             p_id = self.canvas.create_oval(x-radius, y-radius, x+radius, y+radius, fill="#66d9ff", outline="#ffffff")
         self.freeze_powerups.append(p_id)
+        print(f"DEBUG: Spawned freeze powerup at ({x}, {y}), ID: {p_id}, Total freeze powerups: {len(self.freeze_powerups)}")
 
     def activate_freeze(self, mode='full', duration=5.0):
         """Activate freeze effect.
@@ -2839,37 +2843,41 @@ class bullet_hell_game:
         # --- Freeze power-up spawn (independent of bullet patterns) ---
         # Only spawn if not currently active and limited number on screen
         if not self.freeze_active and len(self.freeze_powerups) < 1:
-            # Roughly ~ one every ~45s expected (1 in 900 per 50ms frame)
-            if random.randint(1, 900) == 1:
+            # Increased spawn rate for testing: ~every 5 seconds (1 in 100 per 50ms frame)
+            if random.randint(1, 100) == 1:
                 self.spawn_freeze_powerup()
         # --- Rewind power-up spawn ---
         if not self.rewind_active and len(self.rewind_powerups) < 1:
-            # Rarer than freeze (approx one every ~70s)
-            if random.randint(1, 1400) == 1 and len(self._bullet_history) > 40:
+            # Increased spawn rate for testing: ~every 7 seconds (1 in 140 per 50ms frame)
+            if random.randint(1, 140) == 1 and len(self._bullet_history) > 40:
                 self.spawn_rewind_powerup()
         
         # --- Shield power-up spawn (optimized) ---
         if not self.shield_active and len(self.shield_powerups) < 1:
-            # Spawn roughly every ~55s (1 in 1100 per 50ms frame)
-            if random.randint(1, 1100) == 1:
+            # Increased spawn rate for testing: ~every 6 seconds (1 in 120 per 50ms frame)
+            if random.randint(1, 120) == 1:
                 self.spawn_shield_powerup()
         
         # --- Slow-motion power-up spawn (optimized) ---
         if not self.slowmo_active and len(self.slowmo_powerups) < 1:
-            # Spawn roughly every ~65s (1 in 1300 per 50ms frame)
-            if random.randint(1, 1300) == 1:
+            # Increased spawn rate for testing: ~every 7 seconds (1 in 140 per 50ms frame)
+            if random.randint(1, 140) == 1:
                 self.spawn_slowmo_powerup()
 
         # Move existing freeze power-ups downward & check collection
+        if self.freeze_powerups:
+            print(f"DEBUG: Processing {len(self.freeze_powerups)} freeze powerups")
         for p_id in self.freeze_powerups[:]:
             try:
                 self.canvas.move(p_id, 0, 4)
                 px1, py1, px2, py2 = self.canvas.coords(self.player)
                 bx1, by1, bx2, by2 = self.canvas.coords(p_id)
+                print(f"DEBUG: Freeze powerup {p_id} at ({bx1}, {by1}, {bx2}, {by2}), Player at ({px1}, {py1}, {px2}, {py2})")
                 if bx2 < px1 or bx1 > px2 or by2 < py1 or by1 > py2:
                     # no overlap
                     pass
                 else:
+                    print(f"DEBUG: Freeze powerup {p_id} collected!")
                     self.activate_freeze()
                     try:
                         self.canvas.delete(p_id)
@@ -2879,12 +2887,14 @@ class bullet_hell_game:
                     continue
                 # Remove if off screen
                 if by1 > self.height:
+                    print(f"DEBUG: Freeze powerup {p_id} off screen, removing")
                     try:
                         self.canvas.delete(p_id)
                     except Exception:
                         pass
                     self.freeze_powerups.remove(p_id)
-            except Exception:
+            except Exception as e:
+                print(f"DEBUG: Exception processing freeze powerup {p_id}: {e}")
                 try:
                     self.freeze_powerups.remove(p_id)
                 except Exception:
@@ -4065,6 +4075,23 @@ class bullet_hell_game:
             except Exception: pass
             self._debug_hud_text_id = None
 
+    def toggle_mouse_mode(self, event=None):
+        """Toggle mouse mode on/off during gameplay."""
+        self.settings['mouse_enabled'] = not self.settings.get('mouse_enabled', True)
+        # Show brief notification
+        if hasattr(self, 'canvas') and self.canvas:
+            try:
+                status = "ON" if self.settings['mouse_enabled'] else "OFF"
+                notification = self.canvas.create_text(
+                    self.width // 2, 50,
+                    text=f"Mouse Mode: {status}",
+                    fill="#ffff00", font=("Arial", 20, "bold")
+                )
+                # Remove notification after 1 second
+                self.root.after(1000, lambda: self.canvas.delete(notification))
+            except Exception:
+                pass
+
     def _update_debug_hud(self):
         try:
             counts = {
@@ -4737,7 +4764,8 @@ class bullet_hell_game:
             'pause': '⏸ Pause',
             'restart': '↻ Restart',
             'practice': '⚙ Practice',
-            'debug': '🔧 Debug'
+            'debug': '🔧 Debug',
+            'toggle_mouse': '🖱 Toggle Mouse'
         }
         
         self.keybind_text_items = {}
