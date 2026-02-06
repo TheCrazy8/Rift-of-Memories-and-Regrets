@@ -30,7 +30,17 @@ _atan2 = math.atan2
 _pi = math.pi
 _tau = getattr(math, 'tau', 2 * math.pi)
 
+# Helper function for color interpolation
+def _lerp_color(c1, c2, t):
+    """Linearly interpolate between two RGB color tuples."""
+    return tuple(int(c1[i] + (c2[i]-c1[i])*t) for i in range(3))
+
 class bullet_hell_game:
+    # Player sprite decoration constants
+    DIAMOND_SIZE = 30
+    INNER_SIZE = 10
+    GLOW_RADIUS = 34
+    
     def __init__(self, root, bg_color_interval=6):
         # Initialize pygame mixer and play music
         if pyi_splash is not None:
@@ -281,7 +291,7 @@ class bullet_hell_game:
         cy = self.height - 40
         self.player = self.canvas.create_rectangle(cx-base_w//2, cy-base_h//2, cx+base_w//2, cy+base_h//2, fill="white", outline="")
         # Diamond (rotated square) around player
-        dsz = 30
+        dsz = self.DIAMOND_SIZE
         diamond_points = [
             cx, cy-dsz/2,
             cx+dsz/2, cy,
@@ -290,10 +300,10 @@ class bullet_hell_game:
         ]
         diamond = self.canvas.create_polygon(diamond_points, outline="#66ccff", fill="", width=2)
         # Inner square accent
-        isz = 10
+        isz = self.INNER_SIZE
         inner = self.canvas.create_rectangle(cx-isz/2, cy-isz/2, cx+isz/2, cy+isz/2, outline="#ff66ff", width=2)
         # Glow ring (oval) slightly larger, animated alpha simulated by color cycling
-        glow_r = 34
+        glow_r = self.GLOW_RADIUS
         glow = self.canvas.create_oval(cx-glow_r/2, cy-glow_r/2, cx+glow_r/2, cy+glow_r/2, outline="#ffffff", width=2)
         self.player_deco_items = [diamond, inner, glow]
         # Ensure base is above background but below bullets initially
@@ -309,15 +319,15 @@ class bullet_hell_game:
         # Update diamond
         diamond, inner, glow = self.player_deco_items
         # Recompute diamond points keeping size
-        dsz = 30
+        dsz = self.DIAMOND_SIZE
         self.canvas.coords(diamond,
             cx, cy-dsz/2,
             cx+dsz/2, cy,
             cx, cy+dsz/2,
             cx-dsz/2, cy)
-        isz = 10
+        isz = self.INNER_SIZE
         self.canvas.coords(inner, cx-isz/2, cy-isz/2, cx+isz/2, cy+isz/2)
-        glow_r = 34
+        glow_r = self.GLOW_RADIUS
         self.canvas.coords(glow, cx-glow_r/2, cy-glow_r/2, cx+glow_r/2, cy+glow_r/2)
 
     def animate_player_sprite(self):
@@ -329,11 +339,9 @@ class bullet_hell_game:
         # Pulsing glow color
         pulse = (_sin(self.player_glow_phase) + 1)/2  # 0..1
         # Interpolate between two colors for diamond and inner
-        def lerp_color(c1, c2, t):
-            return tuple(int(c1[i] + (c2[i]-c1[i])*t) for i in range(3))
-        d_col = lerp_color((80,180,255), (255,120,255), pulse)
-        i_col = lerp_color((255,120,255), (255,255,255), 1-pulse)
-        g_col = lerp_color((255,255,255), (120,200,255), pulse)
+        d_col = _lerp_color((80,180,255), (255,120,255), pulse)
+        i_col = _lerp_color((255,120,255), (255,255,255), 1-pulse)
+        g_col = _lerp_color((255,255,255), (120,200,255), pulse)
         self.canvas.itemconfig(diamond, outline=f"#{d_col[0]:02x}{d_col[1]:02x}{d_col[2]:02x}")
         self.canvas.itemconfig(inner, outline=f"#{i_col[0]:02x}{i_col[1]:02x}{i_col[2]:02x}")
         self.canvas.itemconfig(glow, outline=f"#{g_col[0]:02x}{g_col[1]:02x}{g_col[2]:02x}")
@@ -342,7 +350,7 @@ class bullet_hell_game:
         x1, y1, x2, y2 = self.canvas.coords(self.player)
         cx = (x1 + x2) / 2
         cy = (y1 + y2) / 2
-        dsz_base = 30
+        dsz_base = self.DIAMOND_SIZE
         dsz = dsz_base * scale_factor
         self.canvas.coords(diamond,
             cx, cy-dsz/2,
@@ -2780,17 +2788,16 @@ class bullet_hell_game:
         if self.freeze_active:
             # spawn a few each frame
             for _ in range(3):
-                import random as _r
-                x = _r.randint(0, self.width)
-                y = _r.randint(0, self.height)
-                size = _r.randint(3,6)
+                x = random.randint(0, self.width)
+                y = random.randint(0, self.height)
+                size = random.randint(3,6)
                 try:
                     pid = self.canvas.create_oval(x-size/2, y-size/2, x+size/2, y+size/2, fill="#c9f6ff", outline="")
                 except Exception:
                     continue
-                vx = _r.uniform(-0.5,0.5)
-                vy = _r.uniform(0.2,0.8)
-                life = _r.randint(18,35)
+                vx = random.uniform(-0.5,0.5)
+                vy = random.uniform(0.2,0.8)
+                life = random.randint(18,35)
                 self.freeze_particles.append((pid, vx, vy, life))
             new_fp = []
             for pid, vx, vy, life in self.freeze_particles:
@@ -2877,7 +2884,15 @@ class bullet_hell_game:
                 
                 self.canvas.move(p_id, 0, 4)
                 px1, py1, px2, py2 = self.canvas.coords(self.player)
-                bx1, by1, bx2, by2 = self.canvas.coords(p_id)
+                # Get coords - handle both polygons and ovals/rectangles
+                p_coords = self.canvas.coords(p_id)
+                if len(p_coords) == 4:
+                    bx1, by1, bx2, by2 = p_coords
+                else:  # Polygon - get bounding box
+                    xs = p_coords[::2]
+                    ys = p_coords[1::2]
+                    bx1, bx2 = min(xs), max(xs)
+                    by1, by2 = min(ys), max(ys)
                 print(f"DEBUG: Freeze powerup {p_id} at ({bx1}, {by1}, {bx2}, {by2}), Player at ({px1}, {py1}, {px2}, {py2})")
                 if bx2 < px1 or bx1 > px2 or by2 < py1 or by1 > py2:
                     # no overlap
@@ -2916,7 +2931,15 @@ class bullet_hell_game:
                 
                 self.canvas.move(r_id, 0, 4)
                 px1, py1, px2, py2 = self.canvas.coords(self.player)
-                rx1, ry1, rx2, ry2 = self.canvas.coords(r_id)
+                # Get coords - handle both polygons and ovals/rectangles
+                r_coords = self.canvas.coords(r_id)
+                if len(r_coords) == 4:
+                    rx1, ry1, rx2, ry2 = r_coords
+                else:  # Polygon - get bounding box
+                    xs = r_coords[::2]
+                    ys = r_coords[1::2]
+                    rx1, rx2 = min(xs), max(xs)
+                    ry1, ry2 = min(ys), max(ys)
                 # collection overlap
                 if not (rx2 < px1 or rx1 > px2 or ry2 < py1 or ry1 > py2):
                     self.activate_rewind()
@@ -2943,7 +2966,15 @@ class bullet_hell_game:
                     s_id = s_entry
                 
                 self.canvas.move(s_id, 0, 4)
-                sx1, sy1, sx2, sy2 = self.canvas.coords(s_id)
+                # Get coords - handle both polygons and ovals/rectangles
+                s_coords = self.canvas.coords(s_id)
+                if len(s_coords) == 4:
+                    sx1, sy1, sx2, sy2 = s_coords
+                else:  # Polygon - get bounding box
+                    xs = s_coords[::2]
+                    ys = s_coords[1::2]
+                    sx1, sx2 = min(xs), max(xs)
+                    sy1, sy2 = min(ys), max(ys)
                 # Collection overlap check
                 if not (sx2 < px1 or sx1 > px2 or sy2 < py1 or sy1 > py2):
                     self.activate_shield()
@@ -3085,7 +3116,7 @@ class bullet_hell_game:
         
         # Cache player coordinates for all collision checks (major optimization)
         try:
-            px1, py1, py2, py2 = self.canvas.coords(self.player)
+            px1, py1, px2, py2 = self.canvas.coords(self.player)
             player_coords_cached = (px1, py1, px2, py2)
         except Exception:
             player_coords_cached = None
@@ -4140,10 +4171,10 @@ class bullet_hell_game:
         focus_pct = int(self.focus_charge*100)
         lines = [
             '== DEBUG HUD (F3)==',
-            f'Bullets Total:{total}  '+ ' '.join(f"{k}:{v}" for k,v in counts.items()),
+            f'Bullets Total:{total}  {" ".join(f"{k}:{v}" for k,v in counts.items())}',
             f'Frame ms avg:{avg:.1f} best:{best:.1f} worst:{worst:.1f}',
             f'Effects: {eff_str}',
-            f'Focus: {focus_pct}%'+(' READY' if self.focus_charge_ready else ''),
+            f'Focus: {focus_pct}%{" READY" if self.focus_charge_ready else ""}',
         ]
         txt = '\n'.join(lines)
         if self._debug_hud_text_id is None:
