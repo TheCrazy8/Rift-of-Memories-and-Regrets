@@ -866,6 +866,7 @@ class bullet_hell_game:
         except Exception:
             p_id = self.canvas.create_oval(x-radius, y-radius, x+radius, y+radius, fill="#66d9ff", outline="#ffffff")
         self.freeze_powerups.append(p_id)
+        print(f"DEBUG: Spawned freeze powerup at ({x}, {y}), ID: {p_id}, Total freeze powerups: {len(self.freeze_powerups)}")
 
     def activate_freeze(self, mode='full', duration=5.0):
         """Activate freeze effect.
@@ -2864,15 +2865,19 @@ class bullet_hell_game:
                 self.spawn_slowmo_powerup()
 
         # Move existing freeze power-ups downward & check collection
+        if self.freeze_powerups:
+            print(f"DEBUG: Processing {len(self.freeze_powerups)} freeze powerups")
         for p_id in self.freeze_powerups[:]:
             try:
                 self.canvas.move(p_id, 0, 4)
                 px1, py1, px2, py2 = self.canvas.coords(self.player)
                 bx1, by1, bx2, by2 = self.canvas.coords(p_id)
+                print(f"DEBUG: Freeze powerup {p_id} at ({bx1}, {by1}, {bx2}, {by2}), Player at ({px1}, {py1}, {px2}, {py2})")
                 if bx2 < px1 or bx1 > px2 or by2 < py1 or by1 > py2:
                     # no overlap
                     pass
                 else:
+                    print(f"DEBUG: Freeze powerup {p_id} collected!")
                     self.activate_freeze()
                     try:
                         self.canvas.delete(p_id)
@@ -2882,12 +2887,14 @@ class bullet_hell_game:
                     continue
                 # Remove if off screen
                 if by1 > self.height:
+                    print(f"DEBUG: Freeze powerup {p_id} off screen, removing")
                     try:
                         self.canvas.delete(p_id)
                     except Exception:
                         pass
                     self.freeze_powerups.remove(p_id)
-            except Exception:
+            except Exception as e:
+                print(f"DEBUG: Exception processing freeze powerup {p_id}: {e}")
                 try:
                     self.freeze_powerups.remove(p_id)
                 except Exception:
