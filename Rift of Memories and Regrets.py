@@ -4147,10 +4147,10 @@ class bullet_hell_game:
         focus_pct = int(self.focus_charge*100)
         lines = [
             '== DEBUG HUD (F3)==',
-            f'Bullets Total:{total}  '+ ' '.join(f"{k}:{v}" for k,v in counts.items()),
+            f'Bullets Total:{total}  {" ".join(f"{k}:{v}" for k,v in counts.items())}',
             f'Frame ms avg:{avg:.1f} best:{best:.1f} worst:{worst:.1f}',
             f'Effects: {eff_str}',
-            f'Focus: {focus_pct}%'+(' READY' if self.focus_charge_ready else ''),
+            f'Focus: {focus_pct}%{" READY" if self.focus_charge_ready else ""}',
         ]
         txt = '\n'.join(lines)
         if self._debug_hud_text_id is None:
