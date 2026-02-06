@@ -106,7 +106,8 @@ class bullet_hell_game:
             'pause': ['Escape'],
             'restart': ['r'],
             'practice': ['p'],
-            'debug': ['F3']
+            'debug': ['F3'],
+            'toggle_mouse': ['m']
         },
         'mouse_enabled': True,
         'controller_enabled': True,
@@ -197,6 +198,8 @@ class bullet_hell_game:
             self.root.bind(key, self.toggle_practice_mode)
         for key in self.settings['keybinds']['debug']:
             self.root.bind(f"<{key}>", self.toggle_debug_hud)
+        for key in self.settings['keybinds']['toggle_mouse']:
+            self.root.bind(key, self.toggle_mouse_mode)
         
         # Debug HUD state
         self.debug_hud_enabled = False
@@ -2838,21 +2841,24 @@ class bullet_hell_game:
 
         # --- Freeze power-up spawn (independent of bullet patterns) ---
         # Only spawn if not currently active and limited number on screen
-        if not self.freeze_active and len(self.freeze_powerups) < 1:
-            # Roughly ~ one every ~45s expected (1 in 900 per 50ms frame)
-            if random.randint(1, 900) == 1:
-                self.spawn_freeze_powerup()
+        # DISABLED: Freeze powerup disabled per requirements
+        # if not self.freeze_active and len(self.freeze_powerups) < 1:
+        #     # Roughly ~ one every ~45s expected (1 in 900 per 50ms frame)
+        #     if random.randint(1, 900) == 1:
+        #         self.spawn_freeze_powerup()
         # --- Rewind power-up spawn ---
-        if not self.rewind_active and len(self.rewind_powerups) < 1:
-            # Rarer than freeze (approx one every ~70s)
-            if random.randint(1, 1400) == 1 and len(self._bullet_history) > 40:
-                self.spawn_rewind_powerup()
+        # DISABLED: Rewind powerup disabled per requirements
+        # if not self.rewind_active and len(self.rewind_powerups) < 1:
+        #     # Rarer than freeze (approx one every ~70s)
+        #     if random.randint(1, 1400) == 1 and len(self._bullet_history) > 40:
+        #         self.spawn_rewind_powerup()
         
         # --- Shield power-up spawn (optimized) ---
-        if not self.shield_active and len(self.shield_powerups) < 1:
-            # Spawn roughly every ~55s (1 in 1100 per 50ms frame)
-            if random.randint(1, 1100) == 1:
-                self.spawn_shield_powerup()
+        # DISABLED: Shield powerup disabled per requirements
+        # if not self.shield_active and len(self.shield_powerups) < 1:
+        #     # Spawn roughly every ~55s (1 in 1100 per 50ms frame)
+        #     if random.randint(1, 1100) == 1:
+        #         self.spawn_shield_powerup()
         
         # --- Slow-motion power-up spawn (optimized) ---
         if not self.slowmo_active and len(self.slowmo_powerups) < 1:
@@ -2860,79 +2866,83 @@ class bullet_hell_game:
             if random.randint(1, 1300) == 1:
                 self.spawn_slowmo_powerup()
 
+        # DISABLED: Freeze powerup movement and collection disabled per requirements
         # Move existing freeze power-ups downward & check collection
-        for p_id in self.freeze_powerups[:]:
-            try:
-                self.canvas.move(p_id, 0, 4)
-                px1, py1, px2, py2 = self.canvas.coords(self.player)
-                bx1, by1, bx2, by2 = self.canvas.coords(p_id)
-                if bx2 < px1 or bx1 > px2 or by2 < py1 or by1 > py2:
-                    # no overlap
-                    pass
-                else:
-                    self.activate_freeze()
-                    try:
-                        self.canvas.delete(p_id)
-                    except Exception:
-                        pass
-                    self.freeze_powerups.remove(p_id)
-                    continue
-                # Remove if off screen
-                if by1 > self.height:
-                    try:
-                        self.canvas.delete(p_id)
-                    except Exception:
-                        pass
-                    self.freeze_powerups.remove(p_id)
-            except Exception:
-                try:
-                    self.freeze_powerups.remove(p_id)
-                except Exception:
-                    pass
+        # for p_id in self.freeze_powerups[:]:
+        #     try:
+        #         self.canvas.move(p_id, 0, 4)
+        #         px1, py1, px2, py2 = self.canvas.coords(self.player)
+        #         bx1, by1, bx2, by2 = self.canvas.coords(p_id)
+        #         if bx2 < px1 or bx1 > px2 or by2 < py1 or by1 > py2:
+        #             # no overlap
+        #             pass
+        #         else:
+        #             self.activate_freeze()
+        #             try:
+        #                 self.canvas.delete(p_id)
+        #             except Exception:
+        #                 pass
+        #             self.freeze_powerups.remove(p_id)
+        #             continue
+        #         # Remove if off screen
+        #         if by1 > self.height:
+        #             try:
+        #                 self.canvas.delete(p_id)
+        #             except Exception:
+        #                 pass
+        #             self.freeze_powerups.remove(p_id)
+        #     except Exception:
+        #         try:
+        #             self.freeze_powerups.remove(p_id)
+        #         except Exception:
+        #             pass
+        # DISABLED: Rewind powerup movement and collection disabled per requirements
         # Move existing rewind power-ups & check collection
-        for r_id in self.rewind_powerups[:]:
-            try:
-                self.canvas.move(r_id, 0, 4)
-                px1, py1, px2, py2 = self.canvas.coords(self.player)
-                rx1, ry1, rx2, ry2 = self.canvas.coords(r_id)
-                # collection overlap
-                if not (rx2 < px1 or rx1 > px2 or ry2 < py1 or ry1 > py2):
-                    self.activate_rewind()
-                    try: self.canvas.delete(r_id)
-                    except Exception: pass
-                    self.rewind_powerups.remove(r_id)
-                    continue
-                if ry1 > self.height:
-                    try: self.canvas.delete(r_id)
-                    except Exception: pass
-                    self.rewind_powerups.remove(r_id)
-            except Exception:
-                try: self.rewind_powerups.remove(r_id)
-                except Exception: pass
+        # for r_id in self.rewind_powerups[:]:
+        #     try:
+        #         self.canvas.move(r_id, 0, 4)
+        #         px1, py1, px2, py2 = self.canvas.coords(self.player)
+        #         rx1, ry1, rx2, ry2 = self.canvas.coords(r_id)
+        #         # collection overlap
+        #         if not (rx2 < px1 or rx1 > px2 or ry2 < py1 or ry1 > py2):
+        #             self.activate_rewind()
+        #             try: self.canvas.delete(r_id)
+        #             except Exception: pass
+        #             self.rewind_powerups.remove(r_id)
+        #             continue
+        #         if ry1 > self.height:
+        #             try: self.canvas.delete(r_id)
+        #             except Exception: pass
+        #             self.rewind_powerups.remove(r_id)
+        #     except Exception:
+        #         try: self.rewind_powerups.remove(r_id)
+        #         except Exception: pass
         
+        # DISABLED: Shield powerup movement and collection disabled per requirements
         # Move existing shield power-ups & check collection (optimized)
-        px1, py1, px2, py2 = self.canvas.coords(self.player)  # Cache player coords
-        for s_id in self.shield_powerups[:]:
-            try:
-                self.canvas.move(s_id, 0, 4)
-                sx1, sy1, sx2, sy2 = self.canvas.coords(s_id)
-                # Collection overlap check
-                if not (sx2 < px1 or sx1 > px2 or sy2 < py1 or sy1 > py2):
-                    self.activate_shield()
-                    try: self.canvas.delete(s_id)
-                    except Exception: pass
-                    self.shield_powerups.remove(s_id)
-                    continue
-                # Remove if off screen
-                if sy1 > self.height:
-                    try: self.canvas.delete(s_id)
-                    except Exception: pass
-                    self.shield_powerups.remove(s_id)
-            except Exception:
-                try: self.shield_powerups.remove(s_id)
-                except Exception: pass
+        # px1, py1, px2, py2 = self.canvas.coords(self.player)  # Cache player coords
+        # for s_id in self.shield_powerups[:]:
+        #     try:
+        #         self.canvas.move(s_id, 0, 4)
+        #         sx1, sy1, sx2, sy2 = self.canvas.coords(s_id)
+        #         # Collection overlap check
+        #         if not (sx2 < px1 or sx1 > px2 or sy2 < py1 or sy1 > py2):
+        #             self.activate_shield()
+        #             try: self.canvas.delete(s_id)
+        #             except Exception: pass
+        #             self.shield_powerups.remove(s_id)
+        #             continue
+        #         # Remove if off screen
+        #         if sy1 > self.height:
+        #             try: self.canvas.delete(s_id)
+        #             except Exception: pass
+        #             self.shield_powerups.remove(s_id)
+        #     except Exception:
+        #         try: self.shield_powerups.remove(s_id)
+        #         except Exception: pass
         
         # Move existing slow-motion power-ups & check collection (optimized)
+        px1, py1, px2, py2 = self.canvas.coords(self.player)  # Cache player coords
         for sm_entry in self.slowmo_powerups[:]:
             try:
                 # Handle both single ID and tuple (id, hand1, hand2)
@@ -4065,6 +4075,23 @@ class bullet_hell_game:
             except Exception: pass
             self._debug_hud_text_id = None
 
+    def toggle_mouse_mode(self, event=None):
+        """Toggle mouse mode on/off during gameplay."""
+        self.settings['mouse_enabled'] = not self.settings.get('mouse_enabled', True)
+        # Show brief notification
+        if hasattr(self, 'canvas') and self.canvas:
+            try:
+                status = "ON" if self.settings['mouse_enabled'] else "OFF"
+                notification = self.canvas.create_text(
+                    self.width // 2, 50,
+                    text=f"Mouse Mode: {status}",
+                    fill="#ffff00", font=("Arial", 20, "bold")
+                )
+                # Remove notification after 1 second
+                self.root.after(1000, lambda: self.canvas.delete(notification))
+            except Exception:
+                pass
+
     def _update_debug_hud(self):
         try:
             counts = {
@@ -4737,7 +4764,8 @@ class bullet_hell_game:
             'pause': '⏸ Pause',
             'restart': '↻ Restart',
             'practice': '⚙ Practice',
-            'debug': '🔧 Debug'
+            'debug': '🔧 Debug',
+            'toggle_mouse': '🖱 Toggle Mouse'
         }
         
         self.keybind_text_items = {}
