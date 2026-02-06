@@ -865,7 +865,7 @@ class bullet_hell_game:
             p_id = self.canvas.create_polygon(pts, fill="#66d9ff", outline="#ffffff", width=2)
         except Exception:
             p_id = self.canvas.create_oval(x-radius, y-radius, x+radius, y+radius, fill="#66d9ff", outline="#ffffff")
-        self.freeze_powerups.append(p_id)
+        self.freeze_powerups.append((p_id,))
         print(f"DEBUG: Spawned freeze powerup at ({x}, {y}), ID: {p_id}, Total freeze powerups: {len(self.freeze_powerups)}")
 
     def activate_freeze(self, mode='full', duration=5.0):
@@ -1027,7 +1027,7 @@ class bullet_hell_game:
             rid = self.canvas.create_polygon(pts, fill="#66ff99", outline="#ffffff", width=2)
         except Exception:
             rid = self.canvas.create_oval(x-18, y-18, x+18, y+18, fill="#66ff99", outline="#ffffff")
-        self.rewind_powerups.append(rid)
+        self.rewind_powerups.append((rid,))
 
     def activate_rewind(self, duration=3.0):
         """Begin rewinding bullet positions for a short duration.
@@ -1262,7 +1262,7 @@ class bullet_hell_game:
             s_id = self.canvas.create_polygon(pts, fill="#9966ff", outline="#ffffff", width=2)
         except Exception:
             s_id = self.canvas.create_oval(x-radius, y-radius, x+radius, y+radius, fill="#9966ff", outline="#ffffff")
-        self.shield_powerups.append(s_id)
+        self.shield_powerups.append((s_id,))
 
     def activate_shield(self):
         """Activate shield - gives player one extra hit point that absorbs damage."""
@@ -2867,8 +2867,14 @@ class bullet_hell_game:
         # Move existing freeze power-ups downward & check collection
         if self.freeze_powerups:
             print(f"DEBUG: Processing {len(self.freeze_powerups)} freeze powerups")
-        for p_id in self.freeze_powerups[:]:
+        for p_entry in self.freeze_powerups[:]:
             try:
+                # Handle tuple format
+                if isinstance(p_entry, tuple):
+                    p_id = p_entry[0]
+                else:
+                    p_id = p_entry
+                
                 self.canvas.move(p_id, 0, 4)
                 px1, py1, px2, py2 = self.canvas.coords(self.player)
                 bx1, by1, bx2, by2 = self.canvas.coords(p_id)
@@ -2883,7 +2889,7 @@ class bullet_hell_game:
                         self.canvas.delete(p_id)
                     except Exception:
                         pass
-                    self.freeze_powerups.remove(p_id)
+                    self.freeze_powerups.remove(p_entry)
                     continue
                 # Remove if off screen
                 if by1 > self.height:
@@ -2892,16 +2898,22 @@ class bullet_hell_game:
                         self.canvas.delete(p_id)
                     except Exception:
                         pass
-                    self.freeze_powerups.remove(p_id)
+                    self.freeze_powerups.remove(p_entry)
             except Exception as e:
-                print(f"DEBUG: Exception processing freeze powerup {p_id}: {e}")
+                print(f"DEBUG: Exception processing freeze powerup {p_entry}: {e}")
                 try:
-                    self.freeze_powerups.remove(p_id)
+                    self.freeze_powerups.remove(p_entry)
                 except Exception:
                     pass
         # Move existing rewind power-ups & check collection
-        for r_id in self.rewind_powerups[:]:
+        for r_entry in self.rewind_powerups[:]:
             try:
+                # Handle tuple format
+                if isinstance(r_entry, tuple):
+                    r_id = r_entry[0]
+                else:
+                    r_id = r_entry
+                
                 self.canvas.move(r_id, 0, 4)
                 px1, py1, px2, py2 = self.canvas.coords(self.player)
                 rx1, ry1, rx2, ry2 = self.canvas.coords(r_id)
@@ -2910,20 +2922,26 @@ class bullet_hell_game:
                     self.activate_rewind()
                     try: self.canvas.delete(r_id)
                     except Exception: pass
-                    self.rewind_powerups.remove(r_id)
+                    self.rewind_powerups.remove(r_entry)
                     continue
                 if ry1 > self.height:
                     try: self.canvas.delete(r_id)
                     except Exception: pass
-                    self.rewind_powerups.remove(r_id)
+                    self.rewind_powerups.remove(r_entry)
             except Exception:
-                try: self.rewind_powerups.remove(r_id)
+                try: self.rewind_powerups.remove(r_entry)
                 except Exception: pass
         
         # Move existing shield power-ups & check collection (optimized)
         px1, py1, px2, py2 = self.canvas.coords(self.player)  # Cache player coords
-        for s_id in self.shield_powerups[:]:
+        for s_entry in self.shield_powerups[:]:
             try:
+                # Handle tuple format
+                if isinstance(s_entry, tuple):
+                    s_id = s_entry[0]
+                else:
+                    s_id = s_entry
+                
                 self.canvas.move(s_id, 0, 4)
                 sx1, sy1, sx2, sy2 = self.canvas.coords(s_id)
                 # Collection overlap check
@@ -2931,15 +2949,15 @@ class bullet_hell_game:
                     self.activate_shield()
                     try: self.canvas.delete(s_id)
                     except Exception: pass
-                    self.shield_powerups.remove(s_id)
+                    self.shield_powerups.remove(s_entry)
                     continue
                 # Remove if off screen
                 if sy1 > self.height:
                     try: self.canvas.delete(s_id)
                     except Exception: pass
-                    self.shield_powerups.remove(s_id)
+                    self.shield_powerups.remove(s_entry)
             except Exception:
-                try: self.shield_powerups.remove(s_id)
+                try: self.shield_powerups.remove(s_entry)
                 except Exception: pass
         
         # Move existing slow-motion power-ups & check collection (optimized)
