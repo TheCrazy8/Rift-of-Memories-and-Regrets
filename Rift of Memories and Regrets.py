@@ -2884,7 +2884,15 @@ class bullet_hell_game:
                 
                 self.canvas.move(p_id, 0, 4)
                 px1, py1, px2, py2 = self.canvas.coords(self.player)
-                bx1, by1, bx2, by2 = self.canvas.coords(p_id)
+                # Get coords - handle both polygons and ovals/rectangles
+                p_coords = self.canvas.coords(p_id)
+                if len(p_coords) == 4:
+                    bx1, by1, bx2, by2 = p_coords
+                else:  # Polygon - get bounding box
+                    xs = p_coords[::2]
+                    ys = p_coords[1::2]
+                    bx1, bx2 = min(xs), max(xs)
+                    by1, by2 = min(ys), max(ys)
                 print(f"DEBUG: Freeze powerup {p_id} at ({bx1}, {by1}, {bx2}, {by2}), Player at ({px1}, {py1}, {px2}, {py2})")
                 if bx2 < px1 or bx1 > px2 or by2 < py1 or by1 > py2:
                     # no overlap
@@ -2923,7 +2931,15 @@ class bullet_hell_game:
                 
                 self.canvas.move(r_id, 0, 4)
                 px1, py1, px2, py2 = self.canvas.coords(self.player)
-                rx1, ry1, rx2, ry2 = self.canvas.coords(r_id)
+                # Get coords - handle both polygons and ovals/rectangles
+                r_coords = self.canvas.coords(r_id)
+                if len(r_coords) == 4:
+                    rx1, ry1, rx2, ry2 = r_coords
+                else:  # Polygon - get bounding box
+                    xs = r_coords[::2]
+                    ys = r_coords[1::2]
+                    rx1, rx2 = min(xs), max(xs)
+                    ry1, ry2 = min(ys), max(ys)
                 # collection overlap
                 if not (rx2 < px1 or rx1 > px2 or ry2 < py1 or ry1 > py2):
                     self.activate_rewind()
@@ -2950,7 +2966,15 @@ class bullet_hell_game:
                     s_id = s_entry
                 
                 self.canvas.move(s_id, 0, 4)
-                sx1, sy1, sx2, sy2 = self.canvas.coords(s_id)
+                # Get coords - handle both polygons and ovals/rectangles
+                s_coords = self.canvas.coords(s_id)
+                if len(s_coords) == 4:
+                    sx1, sy1, sx2, sy2 = s_coords
+                else:  # Polygon - get bounding box
+                    xs = s_coords[::2]
+                    ys = s_coords[1::2]
+                    sx1, sx2 = min(xs), max(xs)
+                    sy1, sy2 = min(ys), max(ys)
                 # Collection overlap check
                 if not (sx2 < px1 or sx1 > px2 or sy2 < py1 or sy1 > py2):
                     self.activate_shield()
