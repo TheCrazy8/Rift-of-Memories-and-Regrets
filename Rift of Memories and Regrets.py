@@ -855,26 +855,21 @@ class bullet_hell_game:
 
     # ---------------- Freeze Power-Up Methods ----------------
     def spawn_freeze_powerup(self):
-        """Spawn a freeze power-up (blue snowflake-like polygon or circle) descending from top."""
+        """Spawn a freeze power-up (blue circle with snowflake lines) descending from top."""
         if self.game_over:
             return
         x = random.randint(40, self.width - 40)
         y = 30
-        # Simple 6-point snowflake/star representation
         radius = 18
-        pts = []
-        for i in range(6):
-            ang = (math.pi * 2 / 6) * i
-            r = radius if i % 2 == 0 else radius * 0.55
-            px = x + _cos(ang) * r
-            py = y + _sin(ang) * r
-            pts.extend([px, py])
-        try:
-            p_id = self.canvas.create_polygon(pts, fill="#66d9ff", outline="#ffffff", width=2)
-        except Exception:
-            p_id = self.canvas.create_oval(x-radius, y-radius, x+radius, y+radius, fill="#66d9ff", outline="#ffffff")
-        self.freeze_powerups.append((p_id,))
-        print(f"DEBUG: Spawned freeze powerup at ({x}, {y}), ID: {p_id}, Total freeze powerups: {len(self.freeze_powerups)}")
+        # Main hitbox oval (same shape type as working slow-mo powerup)
+        f_id = self.canvas.create_oval(
+            x - radius, y - radius, x + radius, y + radius,
+            fill="#66d9ff", outline="#ffffff", width=2
+        )
+        # Decorative snowflake cross lines
+        line1 = self.canvas.create_line(x, y - radius * 0.7, x, y + radius * 0.7, fill="#ffffff", width=2)
+        line2 = self.canvas.create_line(x - radius * 0.6, y, x + radius * 0.6, y, fill="#ffffff", width=2)
+        self.freeze_powerups.append((f_id, line1, line2))
 
     def activate_freeze(self, mode='full', duration=5.0):
         """Activate freeze effect.
@@ -1023,19 +1018,21 @@ class bullet_hell_game:
 
     # ---------------- Rewind Power-Up ----------------
     def spawn_rewind_powerup(self):
-        """Spawn a rewind power-up (greenish hourglass/spiral)."""
+        """Spawn a rewind power-up (green circle with arrow lines) descending from top."""
         if self.game_over:
             return
         x = random.randint(40, self.width - 40)
         y = 30
-        # Simple hourglass polygon
-        try:
-            size = 18
-            pts = [x-size, y-size, x+size, y-size, x+size/2, y, x+size, y+size, x-size, y+size, x-size/2, y]
-            rid = self.canvas.create_polygon(pts, fill="#66ff99", outline="#ffffff", width=2)
-        except Exception:
-            rid = self.canvas.create_oval(x-18, y-18, x+18, y+18, fill="#66ff99", outline="#ffffff")
-        self.rewind_powerups.append((rid,))
+        radius = 18
+        # Main hitbox oval (same shape type as working slow-mo powerup)
+        r_id = self.canvas.create_oval(
+            x - radius, y - radius, x + radius, y + radius,
+            fill="#66ff99", outline="#ffffff", width=2
+        )
+        # Decorative rewind arrow lines
+        line1 = self.canvas.create_line(x + 5, y - 8, x - 5, y, fill="#ffffff", width=2)
+        line2 = self.canvas.create_line(x - 5, y, x + 5, y + 8, fill="#ffffff", width=2)
+        self.rewind_powerups.append((r_id, line1, line2))
 
     def activate_rewind(self, duration=3.0):
         """Begin rewinding bullet positions for a short duration.
@@ -1253,24 +1250,21 @@ class bullet_hell_game:
 
     # ---------------- Shield Power-Up ----------------
     def spawn_shield_powerup(self):
-        """Spawn a shield power-up (purple hexagon) descending from top."""
+        """Spawn a shield power-up (purple circle with cross lines) descending from top."""
         if self.game_over:
             return
         x = random.randint(40, self.width - 40)
         y = 30
-        # Create hexagon shape for shield
         radius = 18
-        pts = []
-        for i in range(6):
-            ang = (math.pi * 2 / 6) * i + math.pi / 6  # Rotate by 30 degrees
-            px = x + _cos(ang) * radius
-            py = y + _sin(ang) * radius
-            pts.extend([px, py])
-        try:
-            s_id = self.canvas.create_polygon(pts, fill="#9966ff", outline="#ffffff", width=2)
-        except Exception:
-            s_id = self.canvas.create_oval(x-radius, y-radius, x+radius, y+radius, fill="#9966ff", outline="#ffffff")
-        self.shield_powerups.append((s_id,))
+        # Main hitbox oval (same shape type as working slow-mo powerup)
+        s_id = self.canvas.create_oval(
+            x - radius, y - radius, x + radius, y + radius,
+            fill="#9966ff", outline="#ffffff", width=2
+        )
+        # Decorative shield cross lines
+        line1 = self.canvas.create_line(x - radius * 0.5, y - radius * 0.5, x + radius * 0.5, y + radius * 0.5, fill="#ffffff", width=2)
+        line2 = self.canvas.create_line(x + radius * 0.5, y - radius * 0.5, x - radius * 0.5, y + radius * 0.5, fill="#ffffff", width=2)
+        self.shield_powerups.append((s_id, line1, line2))
 
     def activate_shield(self):
         """Activate shield - gives player one extra hit point that absorbs damage."""
@@ -2871,121 +2865,131 @@ class bullet_hell_game:
             if random.randint(1, 1400) == 1:
                 self.spawn_slowmo_powerup()
 
+        # Cache player coords for all powerup collision checks
+        px1, py1, px2, py2 = self.canvas.coords(self.player)
         # Move existing freeze power-ups downward & check collection
-        if self.freeze_powerups:
-            print(f"DEBUG: Processing {len(self.freeze_powerups)} freeze powerups")
-        for p_entry in self.freeze_powerups[:]:
+        for f_entry in self.freeze_powerups[:]:
             try:
-                # Handle tuple format
-                if isinstance(p_entry, tuple):
-                    p_id = p_entry[0]
+                # Handle both single ID and tuple (id, deco1, deco2)
+                if isinstance(f_entry, tuple):
+                    f_id, fd1, fd2 = f_entry
+                    self.canvas.move(f_id, 0, 4)
+                    if fd1: self.canvas.move(fd1, 0, 4)
+                    if fd2: self.canvas.move(fd2, 0, 4)
                 else:
-                    p_id = p_entry
+                    f_id = f_entry
+                    fd1, fd2 = None, None
+                    self.canvas.move(f_id, 0, 4)
                 
-                self.canvas.move(p_id, 0, 4)
-                px1, py1, px2, py2 = self.canvas.coords(self.player)
-                # Get coords - handle both polygons and ovals/rectangles
-                p_coords = self.canvas.coords(p_id)
-                if len(p_coords) == 4:
-                    bx1, by1, bx2, by2 = p_coords
-                else:  # Polygon - get bounding box
-                    xs = p_coords[::2]
-                    ys = p_coords[1::2]
-                    bx1, bx2 = min(xs), max(xs)
-                    by1, by2 = min(ys), max(ys)
-                print(f"DEBUG: Freeze powerup {p_id} at ({bx1}, {by1}, {bx2}, {by2}), Player at ({px1}, {py1}, {px2}, {py2})")
-                if bx2 < px1 or bx1 > px2 or by2 < py1 or by1 > py2:
-                    # no overlap
-                    pass
-                else:
-                    print(f"DEBUG: Freeze powerup {p_id} collected!")
+                fx1, fy1, fx2, fy2 = self.canvas.coords(f_id)
+                # Collection overlap check
+                if not (fx2 < px1 or fx1 > px2 or fy2 < py1 or fy1 > py2):
                     self.activate_freeze()
-                    try:
-                        self.canvas.delete(p_id)
-                    except Exception:
-                        pass
-                    self.freeze_powerups.remove(p_entry)
+                    try: self.canvas.delete(f_id)
+                    except Exception: pass
+                    if fd1:
+                        try: self.canvas.delete(fd1)
+                        except Exception: pass
+                    if fd2:
+                        try: self.canvas.delete(fd2)
+                        except Exception: pass
+                    self.freeze_powerups.remove(f_entry)
                     continue
                 # Remove if off screen
-                if by1 > self.height:
-                    print(f"DEBUG: Freeze powerup {p_id} off screen, removing")
-                    try:
-                        self.canvas.delete(p_id)
-                    except Exception:
-                        pass
-                    self.freeze_powerups.remove(p_entry)
-            except Exception as e:
-                print(f"DEBUG: Exception processing freeze powerup {p_entry}: {e}")
-                try:
-                    self.freeze_powerups.remove(p_entry)
-                except Exception:
-                    pass
+                if fy1 > self.height:
+                    try: self.canvas.delete(f_id)
+                    except Exception: pass
+                    if fd1:
+                        try: self.canvas.delete(fd1)
+                        except Exception: pass
+                    if fd2:
+                        try: self.canvas.delete(fd2)
+                        except Exception: pass
+                    self.freeze_powerups.remove(f_entry)
+            except Exception:
+                try: self.freeze_powerups.remove(f_entry)
+                except Exception: pass
         # Move existing rewind power-ups & check collection
         for r_entry in self.rewind_powerups[:]:
             try:
-                # Handle tuple format
+                # Handle both single ID and tuple (id, deco1, deco2)
                 if isinstance(r_entry, tuple):
-                    r_id = r_entry[0]
+                    r_id, rd1, rd2 = r_entry
+                    self.canvas.move(r_id, 0, 4)
+                    if rd1: self.canvas.move(rd1, 0, 4)
+                    if rd2: self.canvas.move(rd2, 0, 4)
                 else:
                     r_id = r_entry
+                    rd1, rd2 = None, None
+                    self.canvas.move(r_id, 0, 4)
                 
-                self.canvas.move(r_id, 0, 4)
-                px1, py1, px2, py2 = self.canvas.coords(self.player)
-                # Get coords - handle both polygons and ovals/rectangles
-                r_coords = self.canvas.coords(r_id)
-                if len(r_coords) == 4:
-                    rx1, ry1, rx2, ry2 = r_coords
-                else:  # Polygon - get bounding box
-                    xs = r_coords[::2]
-                    ys = r_coords[1::2]
-                    rx1, rx2 = min(xs), max(xs)
-                    ry1, ry2 = min(ys), max(ys)
-                # collection overlap
+                rx1, ry1, rx2, ry2 = self.canvas.coords(r_id)
+                # Collection overlap check
                 if not (rx2 < px1 or rx1 > px2 or ry2 < py1 or ry1 > py2):
                     self.activate_rewind()
                     try: self.canvas.delete(r_id)
                     except Exception: pass
+                    if rd1:
+                        try: self.canvas.delete(rd1)
+                        except Exception: pass
+                    if rd2:
+                        try: self.canvas.delete(rd2)
+                        except Exception: pass
                     self.rewind_powerups.remove(r_entry)
                     continue
+                # Remove if off screen
                 if ry1 > self.height:
                     try: self.canvas.delete(r_id)
                     except Exception: pass
+                    if rd1:
+                        try: self.canvas.delete(rd1)
+                        except Exception: pass
+                    if rd2:
+                        try: self.canvas.delete(rd2)
+                        except Exception: pass
                     self.rewind_powerups.remove(r_entry)
             except Exception:
                 try: self.rewind_powerups.remove(r_entry)
                 except Exception: pass
         
-        # Move existing shield power-ups & check collection (optimized)
-        px1, py1, px2, py2 = self.canvas.coords(self.player)  # Cache player coords
+        # Move existing shield power-ups & check collection
         for s_entry in self.shield_powerups[:]:
             try:
-                # Handle tuple format
+                # Handle both single ID and tuple (id, deco1, deco2)
                 if isinstance(s_entry, tuple):
-                    s_id = s_entry[0]
+                    s_id, sd1, sd2 = s_entry
+                    self.canvas.move(s_id, 0, 4)
+                    if sd1: self.canvas.move(sd1, 0, 4)
+                    if sd2: self.canvas.move(sd2, 0, 4)
                 else:
                     s_id = s_entry
+                    sd1, sd2 = None, None
+                    self.canvas.move(s_id, 0, 4)
                 
-                self.canvas.move(s_id, 0, 4)
-                # Get coords - handle both polygons and ovals/rectangles
-                s_coords = self.canvas.coords(s_id)
-                if len(s_coords) == 4:
-                    sx1, sy1, sx2, sy2 = s_coords
-                else:  # Polygon - get bounding box
-                    xs = s_coords[::2]
-                    ys = s_coords[1::2]
-                    sx1, sx2 = min(xs), max(xs)
-                    sy1, sy2 = min(ys), max(ys)
+                sx1, sy1, sx2, sy2 = self.canvas.coords(s_id)
                 # Collection overlap check
                 if not (sx2 < px1 or sx1 > px2 or sy2 < py1 or sy1 > py2):
                     self.activate_shield()
                     try: self.canvas.delete(s_id)
                     except Exception: pass
+                    if sd1:
+                        try: self.canvas.delete(sd1)
+                        except Exception: pass
+                    if sd2:
+                        try: self.canvas.delete(sd2)
+                        except Exception: pass
                     self.shield_powerups.remove(s_entry)
                     continue
                 # Remove if off screen
                 if sy1 > self.height:
                     try: self.canvas.delete(s_id)
                     except Exception: pass
+                    if sd1:
+                        try: self.canvas.delete(sd1)
+                        except Exception: pass
+                    if sd2:
+                        try: self.canvas.delete(sd2)
+                        except Exception: pass
                     self.shield_powerups.remove(s_entry)
             except Exception:
                 try: self.shield_powerups.remove(s_entry)
@@ -3188,7 +3192,7 @@ class bullet_hell_game:
                 self.score += 2
                 continue
             if self.check_collision(bullet):
-                self.lives -= 1
+                self.handle_player_hit()
                 self.canvas.delete(bullet)
                 self.exploding_bullets.remove(bullet)
                 if self.lives <= 0:
@@ -3204,7 +3208,7 @@ class bullet_hell_game:
             self.canvas.move(frag, dx, dy)
             coords = self.canvas.coords(frag)
             if self.check_collision(frag):
-                self.lives -= 1
+                self.handle_player_hit()
                 self.canvas.delete(frag)
                 self.exploded_fragments.remove(frag_tuple)
                 if self.lives <= 0:
