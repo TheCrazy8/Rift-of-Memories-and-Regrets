@@ -6,6 +6,7 @@ import sys
 import os
 import math
 import ctypes
+import json
 from collections import deque
 try:
     import pyi_splash
@@ -247,6 +248,9 @@ class bullet_hell_game:
         if pyi_splash is not None:
             pyi_splash.close()
         
+        # Load skill tree progress
+        self._load_skill_tree()
+        
         # Show main menu
         self.show_main_menu()
 
@@ -262,6 +266,139 @@ class bullet_hell_game:
         if os.path.exists(candidate):
             return candidate
         return os.path.abspath(filename)
+
+    # ---------------- Skill Tree System ----------------
+    # Skill tree node definitions: id, name, cost, description, requires (prerequisite id or None)
+    SKILL_TREE_NODES = [
+        # Left column: Collectible tier unlocks
+        {'id': 'collect_tier_2', 'name': 'Gems Collection', 'cost': 100,
+         'desc': 'Unlock Gem collectibles (5 items)', 'requires': None, 'col': 0, 'row': 0},
+        {'id': 'collect_tier_3_4', 'name': 'Regalia & Knowledge', 'cost': 250,
+         'desc': 'Unlock Regalia + Knowledge (10 items)', 'requires': 'collect_tier_2', 'col': 0, 'row': 1},
+        {'id': 'collect_tier_5_6', 'name': 'Flowers & Bonds', 'cost': 450,
+         'desc': 'Unlock Flowers + Bonds (10 items)', 'requires': 'collect_tier_3_4', 'col': 0, 'row': 2},
+        {'id': 'collect_tier_7_8', 'name': 'Nature & Time', 'cost': 650,
+         'desc': 'Unlock Nature + Time (10 items)', 'requires': 'collect_tier_5_6', 'col': 0, 'row': 3},
+        {'id': 'collect_tier_9_10', 'name': 'Minerals & Artifacts', 'cost': 900,
+         'desc': 'Unlock remaining collectibles (10 items)', 'requires': 'collect_tier_7_8', 'col': 0, 'row': 4},
+        # Right column: Upgrades
+        {'id': 'extra_heart_1', 'name': 'Extra Heart I', 'cost': 100,
+         'desc': '+1 Max Life (4 total)', 'requires': None, 'col': 1, 'row': 0},
+        {'id': 'better_powerups', 'name': 'Enhanced Powerups', 'cost': 250,
+         'desc': 'Powerups spawn 50% more often', 'requires': None, 'col': 1, 'row': 1},
+        {'id': 'extra_heart_2', 'name': 'Extra Heart II', 'cost': 400,
+         'desc': '+1 Max Life (5 total)', 'requires': 'extra_heart_1', 'col': 1, 'row': 2},
+        {'id': 'speed_boost', 'name': 'Speed Boost', 'cost': 500,
+         'desc': '+3 Player Speed', 'requires': None, 'col': 1, 'row': 3},
+        {'id': 'graze_mastery', 'name': 'Graze Mastery', 'cost': 700,
+         'desc': '2x Graze charge bonus', 'requires': None, 'col': 1, 'row': 4},
+    ]
+
+    # Map skill IDs to the collectable tier indices they unlock (0-indexed groups of 5)
+    SKILL_TIER_MAP = {
+        # Tier 1 (indices 0-4, Celestial) is always unlocked
+        'collect_tier_2': [1],        # indices 5-9 (Gems)
+        'collect_tier_3_4': [2, 3],   # indices 10-19 (Regalia + Knowledge)
+        'collect_tier_5_6': [4, 5],   # indices 20-29 (Flowers + Bonds)
+        'collect_tier_7_8': [6, 7],   # indices 30-39 (Nature + Time)
+        'collect_tier_9_10': [8, 9],  # indices 40-49 (Minerals + Artifacts)
+    }
+
+    def _get_save_path(self):
+        """Return path to skill tree save file in the user's data directory."""
+        app_name = 'RiftOfMemoriesAndRegrets'
+        if sys.platform == 'win32':
+            base = os.environ.get('APPDATA', os.path.expanduser('~'))
+            save_dir = os.path.join(base, app_name)
+        elif sys.platform == 'darwin':
+            save_dir = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', app_name)
+        else:
+            xdg = os.environ.get('XDG_DATA_HOME', os.path.join(os.path.expanduser('~'), '.local', 'share'))
+            save_dir = os.path.join(xdg, app_name)
+        try:
+            os.makedirs(save_dir, exist_ok=True)
+        except Exception:
+            save_dir = os.path.expanduser('~')
+        return os.path.join(save_dir, 'skill_tree_save.json')
+
+    def _load_skill_tree(self):
+        """Load skill tree progress from disk."""
+        self.skill_points = 0
+        self.unlocked_skills = set()
+        try:
+            path = self._get_save_path()
+            if os.path.exists(path):
+                with open(path, 'r') as f:
+                    data = json.load(f)
+                self.skill_points = int(data.get('skill_points', 0))
+                self.unlocked_skills = set(data.get('unlocked_skills', []))
+        except Exception:
+            self.skill_points = 0
+            self.unlocked_skills = set()
+
+    def _save_skill_tree(self):
+        """Save skill tree progress to disk."""
+        try:
+            path = self._get_save_path()
+            data = {
+                'skill_points': self.skill_points,
+                'unlocked_skills': list(self.unlocked_skills),
+            }
+            with open(path, 'w') as f:
+                json.dump(data, f)
+        except Exception:
+            pass
+
+    def _award_skill_points(self):
+        """Award skill points based on score and survival time. Called at game end."""
+        sp_from_score = self.score // 10
+        try:
+            survived = int(time.time() - self.timee)
+        except Exception:
+            survived = 0
+        sp_from_time = survived // 10
+        total_sp = sp_from_score + sp_from_time
+        if total_sp > 0:
+            self.skill_points += total_sp
+            self._save_skill_tree()
+        return total_sp
+
+    def _get_unlocked_collectable_indices(self):
+        """Return set of collectable indices (0-49) that are currently unlocked via skill tree."""
+        unlocked = set(range(5))  # Tier 1 (Celestial) always unlocked
+        for skill_id, tier_groups in self.SKILL_TIER_MAP.items():
+            if skill_id in self.unlocked_skills:
+                for group in tier_groups:
+                    start = group * 5
+                    unlocked.update(range(start, start + 5))
+        return unlocked
+
+    def _get_max_lives(self):
+        """Return max lives based on skill tree."""
+        lives = 3
+        if 'extra_heart_1' in self.unlocked_skills:
+            lives += 1
+        if 'extra_heart_2' in self.unlocked_skills:
+            lives += 1
+        return lives
+
+    def _get_powerup_spawn_multiplier(self):
+        """Return powerup spawn chance multiplier from skill tree."""
+        if 'better_powerups' in self.unlocked_skills:
+            return 1.5
+        return 1.0
+
+    def _get_speed_bonus(self):
+        """Return extra player speed from skill tree."""
+        if 'speed_boost' in self.unlocked_skills:
+            return 3
+        return 0
+
+    def _get_graze_multiplier(self):
+        """Return graze charge bonus multiplier from skill tree."""
+        if 'graze_mastery' in self.unlocked_skills:
+            return 2.0
+        return 1.0
 
     def apply_player_move(self, dx, dy):
         if self.paused or self.game_over:
@@ -557,8 +694,21 @@ class bullet_hell_game:
         if not self.game_over and not force:
             return
         
+        # Stop game over animation
+        self.go_anim_active = False
+        self._go_phase2_drawn = False
+        
+        # Unbind game over nav keys
+        try:
+            self.root.unbind('m')
+            self.root.unbind('t')
+        except Exception:
+            pass
+        
         # Mark as game started
         self.game_started = True
+        self.in_main_menu = False
+        self.in_settings_menu = False
         
         # Increment reset counter
         self.resetcount += 1
@@ -568,6 +718,24 @@ class bullet_hell_game:
         
         # Reinitialize game (same as start_game)
         self._initialize_game()
+        
+        # Rebind game keys (they may have been unbound)
+        for key in self.settings['keybinds']['focus']:
+            self.root.bind(f'<KeyPress-{key}>', self._focus_key_pressed)
+            self.root.bind(f'<KeyRelease-{key}>', self._focus_key_released)
+        for key in self.settings['keybinds']['shoot']:
+            self.root.bind(f'<{key}>', self.player_shoot)
+        all_move_keys = (
+            self.settings['keybinds']['move_left'] +
+            self.settings['keybinds']['move_right'] +
+            self.settings['keybinds']['move_up'] +
+            self.settings['keybinds']['move_down']
+        )
+        for key in all_move_keys:
+            if len(key) > 1:
+                self.root.bind(f'<{key}>', self.move_player)
+            else:
+                self.root.bind(key, self.move_player)
         
         # Start game music
         try:
@@ -855,26 +1023,21 @@ class bullet_hell_game:
 
     # ---------------- Freeze Power-Up Methods ----------------
     def spawn_freeze_powerup(self):
-        """Spawn a freeze power-up (blue snowflake-like polygon or circle) descending from top."""
+        """Spawn a freeze power-up (blue circle with snowflake lines) descending from top."""
         if self.game_over:
             return
         x = random.randint(40, self.width - 40)
         y = 30
-        # Simple 6-point snowflake/star representation
         radius = 18
-        pts = []
-        for i in range(6):
-            ang = (math.pi * 2 / 6) * i
-            r = radius if i % 2 == 0 else radius * 0.55
-            px = x + _cos(ang) * r
-            py = y + _sin(ang) * r
-            pts.extend([px, py])
-        try:
-            p_id = self.canvas.create_polygon(pts, fill="#66d9ff", outline="#ffffff", width=2)
-        except Exception:
-            p_id = self.canvas.create_oval(x-radius, y-radius, x+radius, y+radius, fill="#66d9ff", outline="#ffffff")
-        self.freeze_powerups.append((p_id,))
-        print(f"DEBUG: Spawned freeze powerup at ({x}, {y}), ID: {p_id}, Total freeze powerups: {len(self.freeze_powerups)}")
+        # Main hitbox oval (same shape type as working slow-mo powerup)
+        f_id = self.canvas.create_oval(
+            x - radius, y - radius, x + radius, y + radius,
+            fill="#66d9ff", outline="#ffffff", width=2
+        )
+        # Decorative snowflake cross lines
+        line1 = self.canvas.create_line(x, y - radius * 0.7, x, y + radius * 0.7, fill="#ffffff", width=2)
+        line2 = self.canvas.create_line(x - radius * 0.6, y, x + radius * 0.6, y, fill="#ffffff", width=2)
+        self.freeze_powerups.append((f_id, line1, line2))
 
     def activate_freeze(self, mode='full', duration=5.0):
         """Activate freeze effect.
@@ -1023,19 +1186,21 @@ class bullet_hell_game:
 
     # ---------------- Rewind Power-Up ----------------
     def spawn_rewind_powerup(self):
-        """Spawn a rewind power-up (greenish hourglass/spiral)."""
+        """Spawn a rewind power-up (green circle with arrow lines) descending from top."""
         if self.game_over:
             return
         x = random.randint(40, self.width - 40)
         y = 30
-        # Simple hourglass polygon
-        try:
-            size = 18
-            pts = [x-size, y-size, x+size, y-size, x+size/2, y, x+size, y+size, x-size, y+size, x-size/2, y]
-            rid = self.canvas.create_polygon(pts, fill="#66ff99", outline="#ffffff", width=2)
-        except Exception:
-            rid = self.canvas.create_oval(x-18, y-18, x+18, y+18, fill="#66ff99", outline="#ffffff")
-        self.rewind_powerups.append((rid,))
+        radius = 18
+        # Main hitbox oval (same shape type as working slow-mo powerup)
+        r_id = self.canvas.create_oval(
+            x - radius, y - radius, x + radius, y + radius,
+            fill="#66ff99", outline="#ffffff", width=2
+        )
+        # Decorative rewind arrow lines
+        line1 = self.canvas.create_line(x + 5, y - 8, x - 5, y, fill="#ffffff", width=2)
+        line2 = self.canvas.create_line(x - 5, y, x + 5, y + 8, fill="#ffffff", width=2)
+        self.rewind_powerups.append((r_id, line1, line2))
 
     def activate_rewind(self, duration=3.0):
         """Begin rewinding bullet positions for a short duration.
@@ -1253,24 +1418,21 @@ class bullet_hell_game:
 
     # ---------------- Shield Power-Up ----------------
     def spawn_shield_powerup(self):
-        """Spawn a shield power-up (purple hexagon) descending from top."""
+        """Spawn a shield power-up (purple circle with cross lines) descending from top."""
         if self.game_over:
             return
         x = random.randint(40, self.width - 40)
         y = 30
-        # Create hexagon shape for shield
         radius = 18
-        pts = []
-        for i in range(6):
-            ang = (math.pi * 2 / 6) * i + math.pi / 6  # Rotate by 30 degrees
-            px = x + _cos(ang) * radius
-            py = y + _sin(ang) * radius
-            pts.extend([px, py])
-        try:
-            s_id = self.canvas.create_polygon(pts, fill="#9966ff", outline="#ffffff", width=2)
-        except Exception:
-            s_id = self.canvas.create_oval(x-radius, y-radius, x+radius, y+radius, fill="#9966ff", outline="#ffffff")
-        self.shield_powerups.append((s_id,))
+        # Main hitbox oval (same shape type as working slow-mo powerup)
+        s_id = self.canvas.create_oval(
+            x - radius, y - radius, x + radius, y + radius,
+            fill="#9966ff", outline="#ffffff", width=2
+        )
+        # Decorative shield cross lines
+        line1 = self.canvas.create_line(x - radius * 0.5, y - radius * 0.5, x + radius * 0.5, y + radius * 0.5, fill="#ffffff", width=2)
+        line2 = self.canvas.create_line(x + radius * 0.5, y - radius * 0.5, x - radius * 0.5, y + radius * 0.5, fill="#ffffff", width=2)
+        self.shield_powerups.append((s_id, line1, line2))
 
     def activate_shield(self):
         """Activate shield - gives player one extra hit point that absorbs damage."""
@@ -1959,6 +2121,9 @@ class bullet_hell_game:
         """Player collected all items and won!"""
         self.game_over = True
         
+        # Award skill points
+        self._last_sp_earned = self._award_skill_points()
+        
         # Stop game music
         try:
             pygame.mixer.music.stop()
@@ -2490,6 +2655,8 @@ class bullet_hell_game:
         except Exception:
             pass
         self.game_over = True
+        # Award skill points
+        self._last_sp_earned = self._award_skill_points()
         try:
             pygame.mixer.music.stop()
             pygame.mixer.music.unload()
@@ -2504,6 +2671,38 @@ class bullet_hell_game:
                 self.canvas.create_text(self.width//2, self.height//2, text=msg, fill='white', font=('Arial', 48, 'bold'))
             except Exception:
                 pass
+
+    def _game_over_to_menu(self, event=None):
+        """Navigate from game over screen to main menu."""
+        if not self.game_over:
+            return
+        self.go_anim_active = False
+        self._go_phase2_drawn = False
+        self.game_started = False
+        self.game_over = False
+        # Unbind game over nav keys
+        try:
+            self.root.unbind('m')
+            self.root.unbind('t')
+        except Exception:
+            pass
+        self.show_main_menu()
+
+    def _game_over_to_skill_tree(self, event=None):
+        """Navigate from game over screen to skill tree."""
+        if not self.game_over:
+            return
+        self.go_anim_active = False
+        self._go_phase2_drawn = False
+        self.game_started = False
+        self.game_over = False
+        # Unbind game over nav keys
+        try:
+            self.root.unbind('m')
+            self.root.unbind('t')
+        except Exception:
+            pass
+        self.show_skill_tree()
 
     def update_game(self):
         global pyi_splash
@@ -2847,145 +3046,158 @@ class bullet_hell_game:
         boomerang_chance = 170
         split_chance = 180
 
+        # --- Powerup spawn rates (skill tree: Enhanced Powerups reduces thresholds) ---
+        _pu_mult = self._get_powerup_spawn_multiplier()
+        _freeze_threshold = max(1, int(1000 / _pu_mult))
+        _rewind_threshold = max(1, int(1400 / _pu_mult))
+        _shield_threshold = max(1, int(1200 / _pu_mult))
+        _slowmo_threshold = max(1, int(1400 / _pu_mult))
+        
         # --- Freeze power-up spawn (independent of bullet patterns) ---
         # Only spawn if not currently active and limited number on screen
         if not self.freeze_active and len(self.freeze_powerups) < 1:
-            # Increased spawn rate for testing: ~every 5 seconds (1 in 1000 per 50ms frame)
-            if random.randint(1, 1000) == 1:
+            if random.randint(1, _freeze_threshold) == 1:
                 self.spawn_freeze_powerup()
         # --- Rewind power-up spawn ---
         if not self.rewind_active and len(self.rewind_powerups) < 1:
-            # Increased spawn rate for testing: ~every 7 seconds (1 in 1400 per 50ms frame)
-            if random.randint(1, 1400) == 1 and len(self._bullet_history) > 40:
+            if random.randint(1, _rewind_threshold) == 1 and len(self._bullet_history) > 40:
                 self.spawn_rewind_powerup()
         
-        # --- Shield power-up spawn (optimized) ---
+        # --- Shield power-up spawn ---
         if not self.shield_active and len(self.shield_powerups) < 1:
-            # Increased spawn rate for testing: ~every 6 seconds (1 in 1200 per 50ms frame)
-            if random.randint(1, 1200) == 1:
+            if random.randint(1, _shield_threshold) == 1:
                 self.spawn_shield_powerup()
         
-        # --- Slow-motion power-up spawn (optimized) ---
+        # --- Slow-motion power-up spawn ---
         if not self.slowmo_active and len(self.slowmo_powerups) < 1:
-            # Increased spawn rate for testing: ~every 7 seconds (1 in 1400 per 50ms frame)
-            if random.randint(1, 1400) == 1:
+            if random.randint(1, _slowmo_threshold) == 1:
                 self.spawn_slowmo_powerup()
 
+        # Cache player coords for all powerup collision checks
+        px1, py1, px2, py2 = self.canvas.coords(self.player)
         # Move existing freeze power-ups downward & check collection
-        if self.freeze_powerups:
-            print(f"DEBUG: Processing {len(self.freeze_powerups)} freeze powerups")
-        for p_entry in self.freeze_powerups[:]:
+        for f_entry in self.freeze_powerups[:]:
             try:
-                # Handle tuple format
-                if isinstance(p_entry, tuple):
-                    p_id = p_entry[0]
+                # Handle both single ID and tuple (id, deco1, deco2)
+                if isinstance(f_entry, tuple):
+                    f_id, fd1, fd2 = f_entry
+                    self.canvas.move(f_id, 0, 4)
+                    if fd1: self.canvas.move(fd1, 0, 4)
+                    if fd2: self.canvas.move(fd2, 0, 4)
                 else:
-                    p_id = p_entry
+                    f_id = f_entry
+                    fd1, fd2 = None, None
+                    self.canvas.move(f_id, 0, 4)
                 
-                self.canvas.move(p_id, 0, 4)
-                px1, py1, px2, py2 = self.canvas.coords(self.player)
-                # Get coords - handle both polygons and ovals/rectangles
-                p_coords = self.canvas.coords(p_id)
-                if len(p_coords) == 4:
-                    bx1, by1, bx2, by2 = p_coords
-                else:  # Polygon - get bounding box
-                    xs = p_coords[::2]
-                    ys = p_coords[1::2]
-                    bx1, bx2 = min(xs), max(xs)
-                    by1, by2 = min(ys), max(ys)
-                print(f"DEBUG: Freeze powerup {p_id} at ({bx1}, {by1}, {bx2}, {by2}), Player at ({px1}, {py1}, {px2}, {py2})")
-                if bx2 < px1 or bx1 > px2 or by2 < py1 or by1 > py2:
-                    # no overlap
-                    pass
-                else:
-                    print(f"DEBUG: Freeze powerup {p_id} collected!")
+                fx1, fy1, fx2, fy2 = self.canvas.coords(f_id)
+                # Collection overlap check
+                if not (fx2 < px1 or fx1 > px2 or fy2 < py1 or fy1 > py2):
                     self.activate_freeze()
-                    try:
-                        self.canvas.delete(p_id)
-                    except Exception:
-                        pass
-                    self.freeze_powerups.remove(p_entry)
+                    try: self.canvas.delete(f_id)
+                    except Exception: pass
+                    if fd1:
+                        try: self.canvas.delete(fd1)
+                        except Exception: pass
+                    if fd2:
+                        try: self.canvas.delete(fd2)
+                        except Exception: pass
+                    self.freeze_powerups.remove(f_entry)
                     continue
                 # Remove if off screen
-                if by1 > self.height:
-                    print(f"DEBUG: Freeze powerup {p_id} off screen, removing")
-                    try:
-                        self.canvas.delete(p_id)
-                    except Exception:
-                        pass
-                    self.freeze_powerups.remove(p_entry)
-            except Exception as e:
-                print(f"DEBUG: Exception processing freeze powerup {p_entry}: {e}")
-                try:
-                    self.freeze_powerups.remove(p_entry)
-                except Exception:
-                    pass
+                if fy1 > self.height:
+                    try: self.canvas.delete(f_id)
+                    except Exception: pass
+                    if fd1:
+                        try: self.canvas.delete(fd1)
+                        except Exception: pass
+                    if fd2:
+                        try: self.canvas.delete(fd2)
+                        except Exception: pass
+                    self.freeze_powerups.remove(f_entry)
+            except Exception:
+                try: self.freeze_powerups.remove(f_entry)
+                except Exception: pass
         # Move existing rewind power-ups & check collection
         for r_entry in self.rewind_powerups[:]:
             try:
-                # Handle tuple format
+                # Handle both single ID and tuple (id, deco1, deco2)
                 if isinstance(r_entry, tuple):
-                    r_id = r_entry[0]
+                    r_id, rd1, rd2 = r_entry
+                    self.canvas.move(r_id, 0, 4)
+                    if rd1: self.canvas.move(rd1, 0, 4)
+                    if rd2: self.canvas.move(rd2, 0, 4)
                 else:
                     r_id = r_entry
+                    rd1, rd2 = None, None
+                    self.canvas.move(r_id, 0, 4)
                 
-                self.canvas.move(r_id, 0, 4)
-                px1, py1, px2, py2 = self.canvas.coords(self.player)
-                # Get coords - handle both polygons and ovals/rectangles
-                r_coords = self.canvas.coords(r_id)
-                if len(r_coords) == 4:
-                    rx1, ry1, rx2, ry2 = r_coords
-                else:  # Polygon - get bounding box
-                    xs = r_coords[::2]
-                    ys = r_coords[1::2]
-                    rx1, rx2 = min(xs), max(xs)
-                    ry1, ry2 = min(ys), max(ys)
-                # collection overlap
+                rx1, ry1, rx2, ry2 = self.canvas.coords(r_id)
+                # Collection overlap check
                 if not (rx2 < px1 or rx1 > px2 or ry2 < py1 or ry1 > py2):
                     self.activate_rewind()
                     try: self.canvas.delete(r_id)
                     except Exception: pass
+                    if rd1:
+                        try: self.canvas.delete(rd1)
+                        except Exception: pass
+                    if rd2:
+                        try: self.canvas.delete(rd2)
+                        except Exception: pass
                     self.rewind_powerups.remove(r_entry)
                     continue
+                # Remove if off screen
                 if ry1 > self.height:
                     try: self.canvas.delete(r_id)
                     except Exception: pass
+                    if rd1:
+                        try: self.canvas.delete(rd1)
+                        except Exception: pass
+                    if rd2:
+                        try: self.canvas.delete(rd2)
+                        except Exception: pass
                     self.rewind_powerups.remove(r_entry)
             except Exception:
                 try: self.rewind_powerups.remove(r_entry)
                 except Exception: pass
         
-        # Move existing shield power-ups & check collection (optimized)
-        px1, py1, px2, py2 = self.canvas.coords(self.player)  # Cache player coords
+        # Move existing shield power-ups & check collection
         for s_entry in self.shield_powerups[:]:
             try:
-                # Handle tuple format
+                # Handle both single ID and tuple (id, deco1, deco2)
                 if isinstance(s_entry, tuple):
-                    s_id = s_entry[0]
+                    s_id, sd1, sd2 = s_entry
+                    self.canvas.move(s_id, 0, 4)
+                    if sd1: self.canvas.move(sd1, 0, 4)
+                    if sd2: self.canvas.move(sd2, 0, 4)
                 else:
                     s_id = s_entry
+                    sd1, sd2 = None, None
+                    self.canvas.move(s_id, 0, 4)
                 
-                self.canvas.move(s_id, 0, 4)
-                # Get coords - handle both polygons and ovals/rectangles
-                s_coords = self.canvas.coords(s_id)
-                if len(s_coords) == 4:
-                    sx1, sy1, sx2, sy2 = s_coords
-                else:  # Polygon - get bounding box
-                    xs = s_coords[::2]
-                    ys = s_coords[1::2]
-                    sx1, sx2 = min(xs), max(xs)
-                    sy1, sy2 = min(ys), max(ys)
+                sx1, sy1, sx2, sy2 = self.canvas.coords(s_id)
                 # Collection overlap check
                 if not (sx2 < px1 or sx1 > px2 or sy2 < py1 or sy1 > py2):
                     self.activate_shield()
                     try: self.canvas.delete(s_id)
                     except Exception: pass
+                    if sd1:
+                        try: self.canvas.delete(sd1)
+                        except Exception: pass
+                    if sd2:
+                        try: self.canvas.delete(sd2)
+                        except Exception: pass
                     self.shield_powerups.remove(s_entry)
                     continue
                 # Remove if off screen
                 if sy1 > self.height:
                     try: self.canvas.delete(s_id)
                     except Exception: pass
+                    if sd1:
+                        try: self.canvas.delete(sd1)
+                        except Exception: pass
+                    if sd2:
+                        try: self.canvas.delete(sd2)
+                        except Exception: pass
                     self.shield_powerups.remove(s_entry)
             except Exception:
                 try: self.shield_powerups.remove(s_entry)
@@ -3188,7 +3400,7 @@ class bullet_hell_game:
                 self.score += 2
                 continue
             if self.check_collision(bullet):
-                self.lives -= 1
+                self.handle_player_hit()
                 self.canvas.delete(bullet)
                 self.exploding_bullets.remove(bullet)
                 if self.lives <= 0:
@@ -3204,7 +3416,7 @@ class bullet_hell_game:
             self.canvas.move(frag, dx, dy)
             coords = self.canvas.coords(frag)
             if self.check_collision(frag):
-                self.lives -= 1
+                self.handle_player_hit()
                 self.canvas.delete(frag)
                 self.exploded_fragments.remove(frag_tuple)
                 if self.lives <= 0:
@@ -3967,8 +4179,6 @@ class bullet_hell_game:
     def _focus_key_pressed(self, event=None):
         if self.game_over or self.paused:
             return
-        if self.focus_pulse_cooldown > 0:
-            return
         self.focus_active = True
 
     def _focus_key_released(self, event=None):
@@ -3987,6 +4197,43 @@ class bullet_hell_game:
                 self.focus_charge = min(1.0, self.focus_charge + self.focus_charge_rate)
                 if self.focus_charge >= self.focus_charge_threshold:
                     self.focus_charge_ready = True
+        # Draw focus charge bar on screen
+        self._draw_focus_bar()
+
+    def _draw_focus_bar(self):
+        """Draw a focus charge bar near the bottom of the screen."""
+        # Remove previous bar items
+        for item_id in getattr(self, '_focus_bar_items', []):
+            try: self.canvas.delete(item_id)
+            except Exception: pass
+        self._focus_bar_items = []
+        # Only show bar when focus is active or charge > 0
+        if not self.focus_active and self.focus_charge <= 0 and self.focus_pulse_cooldown <= 0:
+            return
+        bar_w = 200
+        bar_h = 12
+        bx = self.width // 2 - bar_w // 2
+        by = self.height - 30
+        # Background
+        bg = self.canvas.create_rectangle(bx, by, bx + bar_w, by + bar_h, fill="#222222", outline="#555555")
+        self._focus_bar_items.append(bg)
+        # Fill
+        fill_w = int(bar_w * self.focus_charge)
+        if fill_w > 0:
+            fill_color = "#66ffdd" if self.focus_charge_ready else "#3388aa"
+            fill = self.canvas.create_rectangle(bx, by, bx + fill_w, by + bar_h, fill=fill_color, outline="")
+            self._focus_bar_items.append(fill)
+        # Label
+        label_text = "FOCUS READY" if self.focus_charge_ready else "FOCUS" if self.focus_active else ""
+        if self.focus_pulse_cooldown > 0:
+            label_text = "COOLDOWN"
+        if label_text:
+            lbl = self.canvas.create_text(self.width // 2, by - 6, text=label_text, fill="#66ffdd", font=("Arial", 10), anchor="s")
+            self._focus_bar_items.append(lbl)
+        # Lift above background
+        for item_id in self._focus_bar_items:
+            try: self.canvas.lift(item_id)
+            except Exception: pass
 
     def _trigger_focus_pulse(self):
         # Clear bullets within radius and grant score; reset charge and start cooldown
@@ -4368,8 +4615,8 @@ class bullet_hell_game:
         button_width = 300
         button_height = 60
         button_x = self.width // 2
-        button_start_y = self.height // 2
-        button_spacing = 90
+        button_start_y = self.height // 2 - 20
+        button_spacing = 75
         
         # Play button with glow effect
         # Outer glow
@@ -4395,8 +4642,37 @@ class bullet_hell_game:
             tags="menu"
         )
         
+        # Skill Tree button with glow effect
+        skill_y = button_start_y + button_spacing
+        self.canvas.create_rectangle(
+            button_x - button_width // 2 - 4, skill_y - button_height // 2 - 4,
+            button_x + button_width // 2 + 4, skill_y + button_height // 2 + 4,
+            fill="#66ff99", outline="", tags="menu"
+        )
+        self.menu_skill_btn = self.canvas.create_rectangle(
+            button_x - button_width // 2, skill_y - button_height // 2,
+            button_x + button_width // 2, skill_y + button_height // 2,
+            fill="#33cc66", outline="#ffffff", width=3, tags="menu"
+        )
+        self.menu_skill_text1 = self.canvas.create_text(
+            button_x + 2, skill_y + 2,
+            text="SKILL TREE", fill="#003311", font=("Arial", 32, "bold"),
+            tags="menu"
+        )
+        self.menu_skill_text2 = self.canvas.create_text(
+            button_x, skill_y,
+            text="SKILL TREE", fill="white", font=("Arial", 32, "bold"),
+            tags="menu"
+        )
+        # SP counter under skill tree button
+        self.canvas.create_text(
+            button_x, skill_y + button_height // 2 + 14,
+            text=f"SP: {self.skill_points}", fill="#66ff99", font=("Arial", 14),
+            tags="menu"
+        )
+        
         # Settings button with glow effect
-        settings_y = button_start_y + button_spacing
+        settings_y = skill_y + button_spacing + 14
         self.canvas.create_rectangle(
             button_x - button_width // 2 - 4, settings_y - button_height // 2 - 4,
             button_x + button_width // 2 + 4, settings_y + button_height // 2 + 4,
@@ -4451,6 +4727,9 @@ class bullet_hell_game:
         
         # Bind click events
         self.canvas.tag_bind(self.menu_play_btn, "<Button-1>", lambda e: self.start_game())
+        self.canvas.tag_bind(self.menu_skill_btn, "<Button-1>", lambda e: self.show_skill_tree())
+        self.canvas.tag_bind(self.menu_skill_text1, "<Button-1>", lambda e: self.show_skill_tree())
+        self.canvas.tag_bind(self.menu_skill_text2, "<Button-1>", lambda e: self.show_skill_tree())
         self.canvas.tag_bind(self.menu_settings_btn, "<Button-1>", lambda e: self.show_settings_menu())
         self.canvas.tag_bind(self.menu_settings_text1, "<Button-1>", lambda e: self.show_settings_menu())
         self.canvas.tag_bind(self.menu_settings_text2, "<Button-1>", lambda e: self.show_settings_menu())
@@ -4458,6 +4737,184 @@ class bullet_hell_game:
         
         # Play menu music if available
         self.play_menu_music()
+    
+    def show_skill_tree(self):
+        """Display the skill tree screen where players can unlock skills with SP."""
+        self.canvas.delete("all")
+        
+        # Decorative background
+        gradient_colors = ["#0d0221", "#0a1a0d", "#1a330d"]
+        bar_height = self.height // len(gradient_colors)
+        for i, color in enumerate(gradient_colors):
+            self.canvas.create_rectangle(
+                0, i * bar_height, self.width, (i + 1) * bar_height,
+                fill=color, outline="", tags="skill_tree"
+            )
+        
+        # Title
+        self.canvas.create_text(
+            self.width // 2 + 3, 43,
+            text="SKILL TREE", fill="#003311",
+            font=("Arial", 48, "bold"), tags="skill_tree"
+        )
+        self.canvas.create_text(
+            self.width // 2, 40,
+            text="SKILL TREE", fill="#66ff99",
+            font=("Arial", 48, "bold"), tags="skill_tree"
+        )
+        
+        # SP display
+        self.canvas.create_text(
+            self.width // 2, 85,
+            text=f"Skill Points: {self.skill_points}",
+            fill="#ffff00", font=("Arial", 22, "bold"), tags="skill_tree"
+        )
+        
+        # Column headers
+        col_left_x = self.width // 4
+        col_right_x = 3 * self.width // 4
+        header_y = 120
+        self.canvas.create_text(
+            col_left_x, header_y, text="COLLECTIBLES",
+            fill="#66ddff", font=("Arial", 20, "bold"), tags="skill_tree"
+        )
+        self.canvas.create_text(
+            col_right_x, header_y, text="UPGRADES",
+            fill="#ff66dd", font=("Arial", 20, "bold"), tags="skill_tree"
+        )
+        
+        # Draw skill nodes
+        node_width = 280
+        node_height = 55
+        start_y = 160
+        row_spacing = 70
+        
+        self._skill_tree_click_targets = []
+        
+        for node in self.SKILL_TREE_NODES:
+            col_x = col_left_x if node['col'] == 0 else col_right_x
+            ny = start_y + node['row'] * row_spacing
+            
+            is_unlocked = node['id'] in self.unlocked_skills
+            can_afford = self.skill_points >= node['cost']
+            prereq_met = node['requires'] is None or node['requires'] in self.unlocked_skills
+            can_buy = not is_unlocked and can_afford and prereq_met
+            
+            # Node background color
+            if is_unlocked:
+                bg_color = "#1a4d1a"
+                border_color = "#66ff99"
+                text_color = "#66ff99"
+                status_text = "UNLOCKED"
+                status_color = "#66ff99"
+            elif can_buy:
+                bg_color = "#1a1a4d"
+                border_color = "#ffff00"
+                text_color = "#ffffff"
+                status_text = f"Cost: {node['cost']} SP"
+                status_color = "#ffff00"
+            elif not prereq_met:
+                bg_color = "#1a1a1a"
+                border_color = "#555555"
+                text_color = "#888888"
+                status_text = "LOCKED"
+                status_color = "#555555"
+            else:
+                bg_color = "#1a1a1a"
+                border_color = "#ff4444"
+                text_color = "#aaaaaa"
+                status_text = f"Need: {node['cost']} SP"
+                status_color = "#ff4444"
+            
+            # Draw node rectangle
+            node_rect = self.canvas.create_rectangle(
+                col_x - node_width // 2, ny - node_height // 2,
+                col_x + node_width // 2, ny + node_height // 2,
+                fill=bg_color, outline=border_color, width=2, tags="skill_tree"
+            )
+            
+            # Node name
+            self.canvas.create_text(
+                col_x, ny - 12,
+                text=node['name'], fill=text_color,
+                font=("Arial", 14, "bold"), tags="skill_tree"
+            )
+            
+            # Node description + cost
+            self.canvas.create_text(
+                col_x, ny + 10,
+                text=node['desc'], fill="#aaaaaa",
+                font=("Arial", 10), tags="skill_tree"
+            )
+            
+            # Status text
+            status_id = self.canvas.create_text(
+                col_x, ny + node_height // 2 - 2,
+                text=status_text, fill=status_color,
+                font=("Arial", 9), anchor="s", tags="skill_tree"
+            )
+            
+            # Draw prerequisite arrows (vertical line connecting to previous node in column)
+            if node['requires']:
+                for prev_node in self.SKILL_TREE_NODES:
+                    if prev_node['id'] == node['requires'] and prev_node['col'] == node['col']:
+                        prev_y = start_y + prev_node['row'] * row_spacing
+                        self.canvas.create_line(
+                            col_x, prev_y + node_height // 2,
+                            col_x, ny - node_height // 2,
+                            fill=border_color, width=2, dash=(4, 4), tags="skill_tree"
+                        )
+                        break
+            
+            # Bind click to purchase if available
+            if can_buy:
+                node_id = node['id']
+                self.canvas.tag_bind(node_rect, "<Button-1>",
+                    lambda e, nid=node_id: self._purchase_skill(nid))
+                self.canvas.tag_bind(status_id, "<Button-1>",
+                    lambda e, nid=node_id: self._purchase_skill(nid))
+        
+        # Back button
+        back_y = self.height - 50
+        back_glow = self.canvas.create_rectangle(
+            self.width // 2 - 104, back_y - 24,
+            self.width // 2 + 104, back_y + 24,
+            fill="#334433", outline="", tags="skill_tree"
+        )
+        back_btn = self.canvas.create_rectangle(
+            self.width // 2 - 100, back_y - 20,
+            self.width // 2 + 100, back_y + 20,
+            fill="#225522", outline="#66ff99", width=2, tags="skill_tree"
+        )
+        back_text = self.canvas.create_text(
+            self.width // 2, back_y,
+            text="BACK", fill="white", font=("Arial", 20, "bold"), tags="skill_tree"
+        )
+        self.canvas.tag_bind(back_btn, "<Button-1>", lambda e: self.show_main_menu())
+        self.canvas.tag_bind(back_text, "<Button-1>", lambda e: self.show_main_menu())
+        self.canvas.tag_bind(back_glow, "<Button-1>", lambda e: self.show_main_menu())
+    
+    def _purchase_skill(self, skill_id):
+        """Purchase a skill node if affordable."""
+        node = None
+        for n in self.SKILL_TREE_NODES:
+            if n['id'] == skill_id:
+                node = n
+                break
+        if not node:
+            return
+        if skill_id in self.unlocked_skills:
+            return
+        if self.skill_points < node['cost']:
+            return
+        if node['requires'] and node['requires'] not in self.unlocked_skills:
+            return
+        
+        self.skill_points -= node['cost']
+        self.unlocked_skills.add(skill_id)
+        self._save_skill_tree()
+        # Refresh the skill tree display
+        self.show_skill_tree()
     
     def show_settings_menu(self):
         """Display the settings menu with configurable options."""
@@ -5063,8 +5520,7 @@ class bullet_hell_game:
         # Initialize collectables system
         self.collectables = []  # List of active collectable item IDs
         self.collected_items = set()  # Set of collected item names
-        self.total_collectables = 50
-        self.collectable_types = [
+        self._all_collectable_types = [
             "Star", "Moon", "Sun", "Comet", "Galaxy",
             "Ruby", "Emerald", "Sapphire", "Diamond", "Topaz",
             "Crown", "Scepter", "Shield", "Sword", "Amulet",
@@ -5076,7 +5532,7 @@ class bullet_hell_game:
             "Coin", "Gem", "Ore", "Crystal", "Shard",
             "Mask", "Mirror", "Portrait", "Statue", "Vase"
         ]
-        self.collectable_colors = [
+        self._all_collectable_colors = [
             "#ff0000", "#ff8800", "#ffff00", "#88ff00", "#00ff00",
             "#00ff88", "#00ffff", "#0088ff", "#0000ff", "#8800ff",
             "#ff00ff", "#ff0088", "#ff4444", "#ff8844", "#ffff44",
@@ -5088,6 +5544,11 @@ class bullet_hell_game:
             "#88cc88", "#88ccaa", "#88cccc", "#88aacc", "#8888cc",
             "#aa88cc", "#cc88cc", "#cc88aa", "#dddddd", "#bbbbbb"
         ]
+        # Filter collectables to only include unlocked skill tree tiers
+        unlocked_indices = self._get_unlocked_collectable_indices()
+        self.collectable_types = [self._all_collectable_types[i] for i in sorted(unlocked_indices) if i < len(self._all_collectable_types)]
+        self.collectable_colors = [self._all_collectable_colors[i] for i in sorted(unlocked_indices) if i < len(self._all_collectable_colors)]
+        self.total_collectables = len(self.collectable_types)
         self.next_collectable_spawn = time.time() + 3  # First spawn after 3 seconds
         self.collectable_spawn_interval = 5  # Spawn every 5 seconds
         self.collectable_display_text = None
@@ -5189,7 +5650,7 @@ class bullet_hell_game:
         self.boss_damage_text = self.canvas.create_text(self.width-70, 50, text=f"Boss Hits: {self.boss_health_display}", fill="#ff00ff", font=("Arial", 16))
         self.collectable_display_text = self.canvas.create_text(70, 50, text=f"Items: {len(self.collected_items)}/{self.total_collectables}", fill="#ffff00", font=("Arial", 16))
         
-        self.lives = 3
+        self.lives = self._get_max_lives()
         self.health_icon_items = []
         self.update_health_display()
         
@@ -5207,7 +5668,7 @@ class bullet_hell_game:
         self.focus_charge_ready = False
         self.focus_charge_threshold = 1.0
         self.focus_charge_rate = 0.004
-        self.focus_charge_graze_bonus = 0.05
+        self.focus_charge_graze_bonus = 0.05 * self._get_graze_multiplier()
         self.focus_pulse_cooldown = 0.0
         self.focus_pulse_cooldown_time = 2.0
         self.focus_pulse_radius = 140
@@ -5222,7 +5683,7 @@ class bullet_hell_game:
         self.practice_mode = False
         self.practice_text = None
         self.homing_bullet_max_life = 180
-        self.player_speed = self.settings['player_speed']
+        self.player_speed = self.settings['player_speed'] + self._get_speed_bonus()
         
         # Initialize lore
         try:
@@ -5272,6 +5733,7 @@ class bullet_hell_game:
         if getattr(self, 'go_anim_active', False):
             return
         self.go_anim_active = True
+        self._go_phase2_drawn = False
         self.go_anim_particles = []
         self.go_anim_frame = 0
         # Glitch blackout sequence state (fix indentation)
@@ -5390,12 +5852,34 @@ class bullet_hell_game:
                         self.go_anim_subtext = None
                 except Exception: pass
                 self.go_glitch_phase = 2
-        # --- Phase 2: Hold black, minimal updates ---
+        # --- Phase 2: Hold black, show SP earned and navigation options ---
         elif self.go_glitch_phase == 2:
-            # No further visuals; allow a restart key prompt optionally
-            if self.go_anim_frame % 40 == 0 and getattr(self, 'go_anim_text', None) is None:
+            if not getattr(self, '_go_phase2_drawn', False):
+                self._go_phase2_drawn = True
                 try:
-                    self.go_anim_text = self.canvas.create_text(self.width//2, self.height//2, text="PRESS R TO RESTART", fill="#4444ff", font=("Arial", 24))
+                    sp_earned = getattr(self, '_last_sp_earned', 0)
+                    cy = self.height // 2
+                    # SP earned text
+                    if sp_earned > 0:
+                        sp_text = self.canvas.create_text(
+                            self.width // 2, cy - 60,
+                            text=f"+{sp_earned} Skill Points Earned!",
+                            fill="#66ff99", font=("Arial", 22, "bold"))
+                        self.canvas.lift(sp_text)
+                        sp_total = self.canvas.create_text(
+                            self.width // 2, cy - 30,
+                            text=f"Total SP: {self.skill_points}",
+                            fill="#ffff00", font=("Arial", 16))
+                        self.canvas.lift(sp_total)
+                    # Navigation options
+                    self.go_anim_text = self.canvas.create_text(
+                        self.width // 2, cy + 10,
+                        text="R - RESTART  |  M - MENU  |  T - SKILL TREE",
+                        fill="#4444ff", font=("Arial", 22))
+                    self.canvas.lift(self.go_anim_text)
+                    # Bind game over navigation keys
+                    self.root.bind('m', self._game_over_to_menu)
+                    self.root.bind('t', self._game_over_to_skill_tree)
                 except Exception:
                     pass
         # Pulse text color / scale
